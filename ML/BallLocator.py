@@ -138,7 +138,7 @@ class BallLocator():
 
             num, im3, mask, rect = cv.floodFill(res, mask, seed, 255, (10,)*3, (10,)*3, floodflags)
 
-            if((num > 80) and (num < 220)):
+            if((num > 135) and (num < 220)):
                 posX = rect[0]+rect[2]/2
                 posY = rect[1]+rect[3]/2
                 return posX/w, posY/h 

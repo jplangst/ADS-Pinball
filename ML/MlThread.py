@@ -17,7 +17,7 @@ from ML.RL import RL_Controller
 # to the RL model for decision making. The decision made is performed through the JetsonAGX controller. 
 
 class MLThread(threading.Thread):
-    def __init__(self, target=None, name=None, modelRestorePath=None):
+    def __init__(self, target=None, name=None, modelRestorePath=None, checkpointDir=None):
         super(MLThread,self).__init__()
         self.target = target
         self.name = name
@@ -29,7 +29,7 @@ class MLThread(threading.Thread):
         nmb_input_features_RL = 2 # (X,Y) coordinates
         self.input_shape_RL = (input_frames_RL,nmb_input_features_RL)
         self.ballLocationHistory = np.zeros(self.input_shape_RL)
-        self.RL_Controller = RL_Controller(BATCH=256, MODEL_RESTORE_PATH=modelRestorePath)
+        self.RL_Controller = RL_Controller(BATCH=256, MODEL_RESTORE_PATH=modelRestorePath, CHECKPOINT_DIR=checkpointDir)
 
         # CNN related 
         config = tf.compat.v1.ConfigProto(log_device_placement=False, device_count={'GPU': True})

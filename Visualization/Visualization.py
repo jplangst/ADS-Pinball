@@ -99,20 +99,6 @@ class VisualizationThread(threading.Thread):
 
         self.newEpisodeRecording = False 
 
-    #def recordEpisode(self, frame):
-    #    if not self.newEpisodeRecording:
-    #        state = 0
-    #        self.newEpisodeRecording = True
-    #        print("Starting new recording")
-    #    else:
-    #        state = 1
-    #    sharedData.recordEpisodeFramesQueue.put([frame, state, self.episode])
-
-    #def stopRecordingEpisode(self):
-    #    print("Stopping recording")
-    #    self.newEpisodeRecording = False
-    #    sharedData.recordEpisodeFramesQueue.put([None, 2, self.episode])
-
     def recordEpisode(self, episode, frame):
         if episode % sharedData.episodeRecordingInterval == 0:
             if sharedData.gameOver:
@@ -149,11 +135,6 @@ class VisualizationThread(threading.Thread):
 
                 #Episode recording
                 self.recordEpisode(episode, visFrame)
-                #if episode % sharedData.episodeRecordingInterval == 0:
-                #    if sharedData.gameOver:
-                #        self.stopRecordingEpisode()
-                #    else:
-                #        self.recordEpisode(frame)   
 
                 if cv.waitKey(1) & 0xFF == ord('q'):
                     sharedData.readingVideoFrames = False

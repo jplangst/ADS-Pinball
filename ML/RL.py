@@ -14,13 +14,18 @@ import Shared.sharedData as sharedData
 from ML.MlUtils import RunningStats, discount, add_histogram
 from ML.PPO_AI_Pinball import PPO
 from ML.PinballController import PinballController
+from PinballUtils import *
 
 class RL_Controller(object):
-    def __init__(self, OUTPUT_RESULTS_DIR='.', MODEL_RESTORE_PATH=None, GAMMA=0.99, LAMBDA=0.95, BATCH=8192):
+    def __init__(self, OUTPUT_RESULTS_DIR='.', MODEL_RESTORE_PATH=None, CHECKPOINT_DIR=None, GAMMA=0.99, LAMBDA=0.95, BATCH=8192):
         ENVIRONMENT = 'PinballMachine'
 
         TIMESTAMP = datetime.now().strftime("%Y%m%d-%H%M%S")
-        self.SUMMARY_DIR = os.path.join(OUTPUT_RESULTS_DIR, "Pinball_PPO_LSTM", ENVIRONMENT, TIMESTAMP)
+
+        if CHECKPOINT_DIR is not None:
+            self.SUMMARY_DIR = CHECKPOINT_DIR
+        else:
+            self.SUMMARY_DIR = os.path.join(OUTPUT_RESULTS_DIR, "Pinball_PPO_LSTM", ENVIRONMENT, TIMESTAMP)
 
         self.pinballController = PinballController()
 
@@ -36,7 +41,14 @@ class RL_Controller(object):
 
         self.goodTrigger = False 
         self.lastGoodYBallLoc = 0
+        self.lastGoodXBallLoc = 0
         self.ballVisibleSteps = 0
+
+        #Used in the good ball trigger check
+        self.prevGoodBallXloc = 1
+
+        self.goodTriggerCount = 0
+        self.goodTriggerRewardTimes = 0
 
         ### Need this to pass information ###
         self.a = 0
@@ -114,6 +126,14 @@ class RL_Controller(object):
 
         self.training = False       
 
+    def resetEpisodeVars(self):
+        self.goodTrigger = False
+        self.lastGoodYBallLoc = 0
+        self.lastGoodXBallLoc = 0
+        self.goodTriggerCount = 0
+        self.goodTriggerRewardTimes = 0
+        self.prevGoodBallXloc = 1
+
     def calculate_reward(self, currLocation, prevLocation, controllerPenalty, terminal):
         # If the state is terminal the reward is zero as there are no possible future rewards
         if(terminal):
@@ -131,84 +151,38 @@ class RL_Controller(object):
         #If the ball is not visible return the r as is
         if not ballVisible:
             if self.a == 4:
-                r += 0.005
+                r += 0.006
             return r
-        elif ballVisible and self.a == 4:
-            r -= 0.01
+        
+        if self.a == 4:
+            r -= 0.03
 
         self.ballVisibleSteps += 1
 
         # If the good trigger flag has been set check how the ball moved since last frame
         if self.goodTrigger:
-            # If the ball's location has moved higher up and the X distance moved is bigger than the threshold 
-            # It is rewarded and the good trigger flag is reset
-            if(sharedData.lastValidBallLocation[0] < self.lastGoodYBallLoc and self.lastGoodYBallLoc-sharedData.lastValidBallLocation[0] 
-                 > sharedData.goodTriggerBallTravelDistanceThreshold): #currLocation[0] old one
-                r += 3
-                self.goodTrigger = False 
-            # If the ball's location is lower than before it was not a good trigger and the flag is reset
-            elif(sharedData.lastValidBallLocation[0]  > prevLocation[0]):
+            if(currLocation[0] < self.prevGoodBallXloc):
+                distance = math.sqrt(math.pow(currLocation[0]-self.lastGoodYBallLoc, 2) + math.pow(currLocation[1]-self.lastGoodXBallLoc,2))
+                if(distance > sharedData.goodTriggerBallTravelDistanceThreshold):
+                    r += 3
+                    self.goodTrigger = False 
+                    self.goodTriggerRewardTimes += 1
+
+                self.prevGoodBallXloc = currLocation[0]
+            else: 
                 self.goodTrigger = False
+            
         #If we are not already evaluating a good trigger, check if the good trigger flag should be set
         elif currLocation[0] > sharedData.goodTriggerThreshold:
             #If a flipper was triggered the location of the ball at the time of trigger is recorded and the good trigger flag is set.
             if(self.a == 1 or self.a == 2 or self.a == 3):
                 self.lastGoodYBallLoc = currLocation[0]
+                self.lastGoodXBallLoc = currLocation[1]
+                self.prevGoodBallXloc = 1
                 self.goodTrigger = True
-        return r
-
-    def calculate_reward_old(self, lastLocation, controllerPenalty, terminal):
-        #Constant penalty to encourage actions
-        r = -0.1
-
-        # Deduct the penalty from the pinballcontroller to discourage unwanted behviour such as trigger spamming
-        r -= controllerPenalty
-
-        distanceToCenterOfTriggers = math.sqrt((sharedData.CenterOfTriggersPoint[0]-lastLocation[0])**2 + 
-                                        (sharedData.CenterOfTriggersPoint[1]-lastLocation[1])**2)
-
-        # If the ball is not visible and an action is performed it should be penalized unless it is the start action.
-
-        if self.goodTrigger:
-            if self.lastGoodYBallLoc > lastLocation[0]:
-                r += 200
-            self.goodTrigger = False
-
-        ballVisible = not (math.isclose(lastLocation[0],-1) and math.isclose(lastLocation[1],-1))
-
-        # If it noop's and the ball is farther away from the flippers than some threshold we give a bonus
-        # If it noop's and the ball is in trigger range we give a penalty 
-        if(self.a == 0):
-            # If the ball is far from the triggers and noop is selected
-            if(ballVisible and distanceToCenterOfTriggers > sharedData.ballToCenterDistanceThreshold):
-                r += 2
-            elif(ballVisible): 
-                r -= 1
-        # If a trigger is activated and the ball is close to the centre of the flippers we give a bonus.
-        # Otherwise we give a penalty 
-        elif(self.a == 1 or self.a == 2 or self.a == 3):
-            # If the ball is not detected and the flipper action is used
-            if(not ballVisible):
-                r -= 5
-            # If the known location of the ball is far from the triggers
-            elif(ballVisible and distanceToCenterOfTriggers > sharedData.ballToCenterDistanceThreshold):
-                r -= 1
-            # If the ball is close to the triggers 
-            elif(ballVisible and distanceToCenterOfTriggers < sharedData.ballToCenterDistanceThreshold):
-                r += 1
-                if lastLocation[0] > sharedData.goodTriggerThreshold:
-                    self.goodTrigger = True
-                    self.lastGoodYBallLoc = lastLocation[0]
-        elif(self.a == 4):
-            if(ballVisible):
-                r -= 10
-            else:
-                r += 1
-
-        # If the state is terminal the reward is zero as there are no possible future rewards
-        if(terminal):
-            r = 0
-
+                self.goodTriggerCount += 1
+        #print("GT: ", self.goodTrigger, "Loc: ", self.lastGoodYBallLoc)
+        #print("GT: ", self.goodTriggerCount, " GRC: ", self.goodTriggerRewardTimes)
         return r
 
     # NOTE Can call the episode start and end functions from this class if we pass episode start and end flags into the queue
@@ -264,6 +238,10 @@ class RL_Controller(object):
 
             if episodeState == 2 and not self.graph_summary==None:
                 self.write_end_of_episode_summary(episode)
+
+                # reset episode variables
+                self.resetEpisodeVars()
+
                 # Save the model
                 if episode % 50 == 0 and episode > 0:
                     self.save_models(episode)
@@ -276,6 +254,7 @@ class RL_Controller(object):
 
         worker_summary = tf.Summary()
         worker_summary.value.add(tag="Reward", simple_value=self.ep_r)
+        worker_summary.value.add(tag="GoodTriggerCount", simple_value=self.goodTriggerRewardTimes)
         worker_summary.value.add(tag="BallVisibleRatio", simple_value=self.ballVisibleSteps/self.ep_t)
 
         # Create Action histograms for each dimension
@@ -295,7 +274,8 @@ class RL_Controller(object):
 
     def save_models(self, episode):
         path = self.ppo.save_model(self.SUMMARY_DIR, episode)
-        print('Saved model at episode', episode, 'in', path)
+        saveTrainingStateFile(episode, path, self.SUMMARY_DIR)
+        print('Saved models and the training state. Episode:', episode, 'in', path)
 
     def stop_training(self):
         self.training = False 

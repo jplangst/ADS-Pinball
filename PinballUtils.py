@@ -2,6 +2,7 @@ import numpy as np
 import json
 import cv2
 import subprocess
+import Shared.sharedData as sharedData
 
 ########### CAMERA RELATED #################
 def loadCameraCalibration(filepath):
@@ -62,3 +63,27 @@ def set_jetson_fan(switch_opt):
 def restart_cam_daemon():
     subprocess.call('sudo {}'.format("sudo systemctl restart nvargus-daemon"), shell=True, stdout=None)
 
+################# JSON state related #########################
+def loadTrainingStateFile():
+    try:
+        with open(sharedData.stateFileFilepath) as json_file:
+            stateData = json.load(json_file)
+            episode = stateData['episode']
+            modelCheckpointFilepath = stateData['modelCheckpointFilepath']
+            checkpointsFolder = stateData['checkpointsFolder']
+            print("Training state file loaded, continuing training from episode: "
+                , episode, " and checkpoint file: ", modelCheckpointFilepath, " checkpoints folder: ", checkpointsFolder)
+            return (True, episode, modelCheckpointFilepath, checkpointsFolder)
+    except Exception as error: 
+        print('Unable to locate or read the training state file')
+        return (False, None, None, None)
+
+def saveTrainingStateFile(episode, modelCheckpointFilepath, checkpointsFolder):
+    jsonData = {"episode": episode,
+                "modelCheckpointFilepath": modelCheckpointFilepath,
+                "checkpointsFolder": checkpointsFolder
+                }
+    jsonObject = json.dumps(jsonData, indent=4)
+
+    with open(sharedData.stateFileFilepath, "w") as stateFile:
+        stateFile.write(jsonObject)

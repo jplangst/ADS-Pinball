@@ -8,11 +8,18 @@ readingVideoFrames = False
 gameOverBallLocationThreshold = 0.8
 gameOverBrightPixelThreshold = 100
 
+# Suitable lighting conditions detection parameters
+brightnessThreshold = 10000
+
+# Camera stream parameters
+errorReadingFramesCounter = 0
+errorReadingFramesThreshold = 100 
+
 # Reward function parameters
 CenterOfTriggersPoint = (0.94,0.5)
-ballToCenterDistanceThreshold = 0.25
-goodTriggerThreshold = 0.85 # Considering the X component
-goodTriggerBallTravelDistanceThreshold = 0.2 # Considering the X component
+ballToCenterDistanceThreshold = 0.15
+goodTriggerThreshold = 0.80 # Considering the X component
+goodTriggerBallTravelDistanceThreshold = 0.15 # Considering the X component
 
 ### ML ###
 # This queue holds the frame that will be processed by the ML scripts
@@ -41,7 +48,7 @@ performingOCR = False
 
 ### Visualisation ###
 #This queue holds the data needed for the pinball visualisation module
-pinballVisQueue = queue.Queue(5)
+pinballVisQueue = queue.Queue(1)
 currentEpisodeReward = 0
 episodeStep = 0
 currentAction = 0
@@ -51,3 +58,9 @@ episodeRecordingInterval = 25
 ### Ball locator ###
 ballFramesQueue = queue.Queue(1)
 lastValidBallLocation = [-1,-1]
+
+### Record JSON file related
+stateFileFilepath = "./trainingState.json"
+
+### Debug flags ###
+debugBrightnessCheck = False

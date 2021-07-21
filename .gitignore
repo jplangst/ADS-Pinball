@@ -1,0 +1,7 @@
+episodeRecordings/*
+Pinball_PPO_LSTM/*
+__pycache__/*
+ML/__pycache__/*
+Shared/__pycache__/*
+Visualization/__pycache__/*
+trainingState.json

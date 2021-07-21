@@ -9,11 +9,11 @@ class PinballController():
     def __init__(self):
         self.left_flipper_elems = TriggerLimiter(minOffTime=0.2, minOnTime=0.1, maxOnTime=2, maxOnTimeOverTime=2,overTime=4)
         self.right_flipper_elems = TriggerLimiter(minOffTime=0.2, minOnTime=0.1, maxOnTime=2, maxOnTimeOverTime=2,overTime=4)
-        self.start_button_elems = TriggerLimiter(minOffTime=0.5, minOnTime=0.2, maxOnTime=2, maxOnTimeOverTime=0.5,overTime=4)
+        self.start_button_elems = TriggerLimiter(minOffTime=0.5, minOnTime=0.2, maxOnTime=0.4, maxOnTimeOverTime=0.5,overTime=4)
 
-        self.left_flipper_out = 37
+        self.left_flipper_out = 32
         self.start_button_out = 33
-        self.right_flipper_out = 32
+        self.right_flipper_out = 37
 
         # Set so that we use the pin numbers inside the circles as reference
         # To use the gpio422 for instance change to mode GPIO.BCM 
