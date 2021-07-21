@@ -148,8 +148,7 @@ class PPO(object):
                 state_in = tf.layers.flatten(conv3)
 
             l1 = tf.layers.dense(state_in, DENSE_UNITS, tf.nn.relu, kernel_regularizer=w_reg, name="pi_l1")
-            lmid = tf.layers.dense(l1, DENSE_UNITS, tf.nn.relu, kernel_regularizer=w_reg, name="pi_lmid")
-            l2 = tf.layers.dense(lmid, LSTM_UNITS, tf.nn.relu, kernel_regularizer=w_reg, name="pi_l2")
+            l2 = tf.layers.dense(l1, LSTM_UNITS, tf.nn.relu, kernel_regularizer=w_reg, name="pi_l2")
 
             # LSTM layer
             a_lstm = tf.nn.rnn_cell.LSTMCell(num_units=LSTM_UNITS, name='basic_lstm_cell')
@@ -185,8 +184,7 @@ class PPO(object):
                 state_in = tf.layers.flatten(conv3)
 
             l1 = tf.layers.dense(state_in, DENSE_UNITS, tf.nn.relu, kernel_regularizer=w_reg, name="vf_l1")
-            lmid = tf.layers.dense(l1, DENSE_UNITS, tf.nn.relu, kernel_regularizer=w_reg, name="vf_lmid")
-            l2 = tf.layers.dense(lmid, LSTM_UNITS, tf.nn.relu, kernel_regularizer=w_reg, name="vf_l2")
+            l2 = tf.layers.dense(l1, LSTM_UNITS, tf.nn.relu, kernel_regularizer=w_reg, name="vf_l2")
 
             # LSTM layer
             c_lstm = tf.nn.rnn_cell.LSTMCell(num_units=LSTM_UNITS, name='basic_lstm_cell')

@@ -1,5 +1,12 @@
 import queue
 
+### Pinball machine mode
+from enum import Enum
+class PinballMode(Enum):
+    PLAYING = 1
+    TRAINING = 2
+    RECORDING = 3
+
 ### Main state ###
 # Set to false to end the main loop
 readingVideoFrames = False
@@ -33,6 +40,10 @@ RLTraining = False
 recordEpisodeFramesQueue = queue.Queue(1)
 recordingEpisodeFrame = False 
 
+### IL Recording Thread
+ILRecordingQueue = queue.Queue(1)
+ilEpisodeFrame = False #TODO Not sure if need yet
+
 ### OCR ###
 #This queue holds the score as found via OCR. The OCR thread will insert into this queue.
 ocrScoreQueue = queue.Queue(1) 
@@ -53,7 +64,7 @@ currentEpisodeReward = 0
 episodeStep = 0
 currentAction = 0
 currentReward = 0
-episodeRecordingInterval = 25
+episodeRecordingInterval = 100 ##TODO set this back to reasonable interval when actually trainnig. e.g. 25
 
 ### Ball locator ###
 ballFramesQueue = queue.Queue(1)

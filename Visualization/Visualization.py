@@ -88,6 +88,8 @@ def pinballVis(im, x, y, score, selectedAction, episode):
 
     return(im1)
   
+## TODO create a parameter flag for if recording should be done or not
+
 class VisualizationThread(threading.Thread):
     def __init__(self, target=None, name=None, imageWidth=512, imageHeight=256):
         super(VisualizationThread,self).__init__()

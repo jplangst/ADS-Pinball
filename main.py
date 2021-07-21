@@ -3,11 +3,12 @@
 
 import cv2 
 import time
-import datetime
 
 import Shared.sharedData as sharedData
+from Shared.sharedData import PinballMode
 from PinballUtils import *
 from ML.MlThread import MLThread
+from ML.ImitationLearning.IL_Thread import ILRecordingThread
 from Visualization.Visualization import VisualizationThread
 from Visualization.EpisodeRecorderThread import EpisodeRecorderThread
 
@@ -15,8 +16,8 @@ from Visualization.EpisodeRecorderThread import EpisodeRecorderThread
 #TODO Fix the action distribution histogram 
 
 class PinballMain():
-    def __init__(self, episode=0, modelRestorePath=None, checkpointsFolder=None) -> None:
-        self.startMLThread = True
+    def __init__(self, episode=0, pinballMode=PinballMode.RECORDING,modelRestorePath=None, checkpointsFolder=None) -> None:
+        self.pinballMode = pinballMode
 
         ### Jetson AGX Configuration ###
         set_power_mode(0) #0 is maximum performance
@@ -24,17 +25,16 @@ class PinballMain():
         set_jetson_fan(255) #The fan speed, ranging from 0-255 where 255 is max
 
         ### Threads ### 
-        if self.startMLThread:
+        if self.pinballMode == PinballMode.TRAINING or self.pinballMode == PinballMode.PLAYING: 
             self.mlThread = MLThread(name='ML Thread', modelRestorePath=modelRestorePath, checkpointDir=checkpointsFolder)
+        if self.pinballMode == PinballMode.RECORDING:
+            self.ilRecordingThread = ILRecordingThread(name='IL Recording Thread')
         self.visThread = VisualizationThread(name='Visualisation Thread')
         self.recordEpisodeThread = EpisodeRecorderThread(name='Episode Recorder Thread',recordingFolder='episodeRecordings/')
         #self.ocrThread = OCRThread(name='ocrThread') 
 
         ### State management ###
-        self.pauseProgram = False 
-        self.pauseStartDatetime = datetime.datetime.now()
         self.episode = episode
-        self.firstEpisode = True
         self.startEpisode = self.episode
         self.episodeState = 2 #0=new episode, 1=same episode, 2=end episode
 
@@ -60,16 +60,21 @@ class PinballMain():
             format=(string)BGR ! appsink"
 
     def start_threads(self): 
-        if self.startMLThread:      
-            self.mlThread.start()       
+        if self.pinballMode == PinballMode.TRAINING or self.pinballMode == PinballMode.PLAYING:     
+            self.mlThread.start()   
+        if self.pinballMode == PinballMode.RECORDING:
+            self.ilRecordingThread.start()
         self.visThread.start()
         self.recordEpisodeThread.start()
         #self.ocrThread.start()
 
     def stop_threads(self):
-        if self.startMLThread:
+        if self.pinballMode == PinballMode.TRAINING or self.pinballMode == PinballMode.PLAYING: 
             self.mlThread.stopProcessing()
             self.mlThread.join()
+        if self.pinballMode == PinballMode.RECORDING:
+            self.ilRecordingThread.stopRecording()
+            self.ilRecordingThread.join()
         self.visThread.stopProcessing()
         self.visThread.join()
         self.recordEpisodeThread.stopProcessing()
@@ -92,17 +97,6 @@ class PinballMain():
             cv2.imshow('Bright pixels', thresh)
             print(nmbBright)
         return (nmbBright < threshold, nmbBright)
-
-    def checkIfWeekdayAndLunch(self):
-        e = datetime.datetime.now()
-        # Check if weekend. Weekday in int. Monday=0, Sunday=6
-        if(e.weekday() < 5):
-            #If not check if itis lunch time
-            if(e.hour >= 10 and e.hour < 14):
-                #Pause as we are in lunch time
-                return True
-        return False
-                
 
     # Checks for gameover. Game over is detected if the ball was last seen 
     # below a threshold and the lights in the pinball machine are out.
@@ -161,10 +155,6 @@ class PinballMain():
         self.videoCap = cv2.VideoCapture(self.pipeline, cv2.CAP_GSTREAMER)
         if not self.videoCap.isOpened():
             return "EXITING - Failed to open the video capture stream"
-        
-        # To visualise when the ML thread is not running
-        if not self.startMLThread:
-            sharedData.RLTraining = True
 
         self.start_threads()
 
@@ -182,49 +172,54 @@ class PinballMain():
             
             frame = self.processFrame(frame)
 
-            #Just visualise the frames while the RL trains
-            if(sharedData.RLTraining or self.pauseProgram):            
+            ## TODO finish this mode
+            if self.pinballMode == PinballMode.PLAYING: #Same as training but we don't perform any more training.
+                ## Record frames and send to the agent
+                ## Perform selected decisions
+
+                ##TODO this is temp until this mode is implemented 
                 if(not sharedData.pinballVisQueue.full()):
-                    sharedData.pinballVisQueue.put([frame, [-1,-1], sharedData.currentEpisodeReward, 0, str(self.episode)+ " Steps: " + str(sharedData.episodeStep) + " Training", self.episode])
-                
-                if self.pauseProgram:
-                    currTime = datetime.datetime.now()
-                    timeDiff = currTime-self.pauseStartDatetime
-                    if timeDiff.total_seconds() > 300:
-                        self.pauseProgram = False
-                        #self.firstEpisode = True
+                        sharedData.pinballVisQueue.put([frame, [-1,-1], sharedData.currentEpisodeReward, 0, 
+                            str(self.episode)+ " Steps: " + str(sharedData.episodeStep) + " Training", self.episode])
                 continue
 
-            #Init the episode if light conditions are good
-            if self.episodeState == 2:
-                bBrightEnough, nmbBright = self.checkImageBrightness(frame, sharedData.brightnessThreshold)
-                bLunchTime = self.checkIfWeekdayAndLunch()
-                bOkToPlay = bBrightEnough and not bLunchTime
+            ## TODO finish this mode
+            elif self.pinballMode == PinballMode.RECORDING:
+                ## TODO start recording when start button first pressed, unless already recording. Can check this in the IL thread. Might as well.
 
-                if self.firstEpisode or bOkToPlay:
-                    self.firstEpisode = False
-                    self.initEpisode(frame)    
-                else:
-                    #If not we clear output actions and wait for 5 minutes before checking again
-                    self.mlThread.RL_Controller.pinballController.clearActions()
+                ## Grab the current frame and add it to the IL Recording Queue
+                if(not sharedData.pinballVisQueue.full()):
+                    sharedData.ILRecordingQueue.put([frame, 0])
 
-                    if not bBrightEnough:
+            ## If we are doing reinforcement learning
+            elif self.pinballMode == PinballMode.TRAINING:
+                #Just visualise the frames while the RL trains
+                if(sharedData.RLTraining):            
+                    if(not sharedData.pinballVisQueue.full()):
+                        sharedData.pinballVisQueue.put([frame, [-1,-1], sharedData.currentEpisodeReward, 0, 
+                            str(self.episode)+ " Steps: " + str(sharedData.episodeStep) + " Training", self.episode])
+                    continue
+
+                #Init the episode if light conditions are good
+                if self.episodeState == 2:
+                    result, nmbBright = self.checkImageBrightness(frame, sharedData.brightnessThreshold)
+                    if self.startEpisode==self.episode or result:
+                        self.initEpisode(frame)    
+                    else:
+                        #If not we clear output actions and wait for 5 minutes before checking again
                         print("Too dark to play, waiting 5 minutes. NmbBright: ", nmbBright)
-                    elif bLunchTime:
-                        print("Taking a lunch break :)")
-                    
-                    self.pauseProgram = True
-                    self.pauseStartDatetime = datetime.datetime.now()
-                continue
+                        self.mlThread.RL_Controller.pinballController.clearActions()
+                        time.sleep(300)
+                    continue
 
-            #Check for game over
-            if not sharedData.gameOver and self.checkForGameOver(frame):    
-                self.endEpisode()
-                time.sleep(0.2)
+                #Check for game over
+                if not sharedData.gameOver and self.checkForGameOver(frame):    
+                    self.endEpisode()
+                    time.sleep(0.2)
 
-            #Add the play area frame to the queue when the previous has been processed
-            if(not sharedData.MLFramesQueue.full()):
-                sharedData.MLFramesQueue.put([frame, self.episode, self.episodeState, sharedData.gameOver])
+                #Add the play area frame to the queue when the previous has been processed
+                if(not sharedData.MLFramesQueue.full()):
+                    sharedData.MLFramesQueue.put([frame, self.episode, self.episodeState, sharedData.gameOver])
 
             time.sleep(0.000001)
 
@@ -232,12 +227,17 @@ class PinballMain():
         return "Finished cleanly"
 
 # Attempt to load trainig progress state
-ret, episode, modelCheckpointFilepath, checkpointsFolder = loadTrainingStateFile()
+loadTrainingState = True
+pinballMode = PinballMode.TRAINING #RECORDING, PLAYING, TRAINING
+
 pinballObject = None
-if ret:
-    pinballObject = PinballMain(episode, modelCheckpointFilepath, checkpointsFolder)
+if loadTrainingState:
+    ret, episode, modelCheckpointFilepath, checkpointsFolder = loadTrainingStateFile()
+    if ret:
+        pinballObject = PinballMain(episode, pinballMode, modelCheckpointFilepath, checkpointsFolder)
 else:
-    pinballObject = PinballMain()
+    episode = 0
+    pinballObject = PinballMain(episode, pinballMode)
 
 # Start the training process
 result = pinballObject.startAIPinball()

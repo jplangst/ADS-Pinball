@@ -151,7 +151,7 @@ class RL_Controller(object):
         #If the ball is not visible return the r as is
         if not ballVisible:
             if self.a == 4:
-                r += 0.006
+                r += 0.05
             return r
         
         if self.a == 4:
@@ -164,7 +164,7 @@ class RL_Controller(object):
             if(currLocation[0] < self.prevGoodBallXloc):
                 distance = math.sqrt(math.pow(currLocation[0]-self.lastGoodYBallLoc, 2) + math.pow(currLocation[1]-self.lastGoodXBallLoc,2))
                 if(distance > sharedData.goodTriggerBallTravelDistanceThreshold):
-                    r += 3
+                    r += 6
                     self.goodTrigger = False 
                     self.goodTriggerRewardTimes += 1
 

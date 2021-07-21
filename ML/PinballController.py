@@ -11,9 +11,15 @@ class PinballController():
         self.right_flipper_elems = TriggerLimiter(minOffTime=0.2, minOnTime=0.1, maxOnTime=2, maxOnTimeOverTime=2,overTime=4)
         self.start_button_elems = TriggerLimiter(minOffTime=0.5, minOnTime=0.2, maxOnTime=0.4, maxOnTimeOverTime=0.5,overTime=4)
 
+        ### Pins for controlling the pinball machine buttons
         self.left_flipper_out = 32
         self.start_button_out = 33
         self.right_flipper_out = 37
+
+        ### Pins for recording the pinball machine buttons when they are pressed
+        self.left_flipper_in = 16 
+        self.start_button_in = 22
+        self.right_flipper_in = 18        
 
         # Set so that we use the pin numbers inside the circles as reference
         # To use the gpio422 for instance change to mode GPIO.BCM 
@@ -23,7 +29,33 @@ class PinballController():
         GPIO.setup(self.start_button_out, GPIO.OUT, initial=0)
         GPIO.setup(self.left_flipper_out, GPIO.OUT, initial=0)
         GPIO.setup(self.right_flipper_out, GPIO.OUT, initial=0)
+
+        GPIO.setup(self.left_flipper_in, GPIO.IN)
+        GPIO.setup(self.start_button_in, GPIO.IN)
+        GPIO.setup(self.right_flipper_in, GPIO.IN)
         return
+
+    def readInputPins(self):
+        leftPressed = GPIO.input(self.left_flipper_in)       
+        rightPressed = GPIO.input(self.right_flipper_in)
+        startPressed = GPIO.input(self.start_button_in)
+
+        buttonPressedStates = [leftPressed, rightPressed, startPressed]
+
+        buttonPressState = 0 #No buttons pressed
+
+        # Actions: (0) Noop, (1) Left, (2) Right, (3) Both, (4) Start
+        if buttonPressedStates[0] == 1 and buttonPressedStates[1] == 1: #Left and Right buttons pressed
+            buttonPressState = 3
+        elif buttonPressedStates[0] == 1: #Left button pressed
+            buttonPressState = 1
+        elif buttonPressedStates[1] == 1: #Right button pressed
+            buttonPressState = 2
+        elif buttonPressedStates[2] == 1: #Right button pressed
+            buttonPressState = 4
+
+        #return [leftPressed, startPressed, rightPressed]
+        return buttonPressState
 
     def resetMachine(self):
         GPIO.output(self.left_flipper_out, 1)
