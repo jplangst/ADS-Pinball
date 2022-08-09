@@ -3,13 +3,13 @@ import numpy as np
 import time
 import math
 
-from ML.TriggerLimiter import initOutputLimit, limitOutput
+from ML.TriggerLimiter import TriggerLimiter
 
 class PinballController():
     def __init__(self):
-        self.left_flipper_elems = initOutputLimit()
-        self.right_flipper_elems = initOutputLimit()
-        self.start_button_elems = initOutputLimit()
+        self.left_flipper_elems = TriggerLimiter(minOffTime=0.2, minOnTime=0.1, maxOnTime=2, maxOnTimeOverTime=2,overTime=4)
+        self.right_flipper_elems = TriggerLimiter(minOffTime=0.2, minOnTime=0.1, maxOnTime=2, maxOnTimeOverTime=2,overTime=4)
+        self.start_button_elems = TriggerLimiter(minOffTime=0.5, minOnTime=0.2, maxOnTime=2, maxOnTimeOverTime=0.5,overTime=4)
 
         self.left_flipper_out = 37
         self.start_button_out = 33
@@ -68,9 +68,9 @@ class PinballController():
 
         gpioCommands = np.zeros(3)#[0,0,0]
         #Safety check to ensure we do not fry the pinball connectors
-        gpioCommands[0],_,ret_state0 = limitOutput(self.left_flipper_elems, actions[0])
-        gpioCommands[1],_,ret_state1 = limitOutput(self.right_flipper_elems, actions[1])
-        gpioCommands[2],_,ret_state2 = limitOutput(self.start_button_elems, actions[2])
+        gpioCommands[0],_,ret_state0 = self.left_flipper_elems.limitOutput(actions[0])
+        gpioCommands[1],_,ret_state1 = self.right_flipper_elems.limitOutput(actions[1])
+        gpioCommands[2],_,ret_state2 = self.start_button_elems.limitOutput(actions[2])
 
         retPenalty += self.checkRetState(ret_state0)
         retPenalty += self.checkRetState(ret_state1)

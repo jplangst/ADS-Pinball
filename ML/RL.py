@@ -133,6 +133,8 @@ class RL_Controller(object):
             if self.a == 4:
                 r += 0.005
             return r
+        elif ballVisible and self.a == 4:
+            r -= 0.01
 
         self.ballVisibleSteps += 1
 

@@ -3,93 +3,94 @@
 import time
 from collections import deque
 
-minOffTime = 0.2 # seconds minimum not being pressed.
-minOnTime = 0.1 # seconds minimum being pressed.
-maxOnTime = 2 # seconds continuosly on. Must be less than maxOnTimeOverTime.
-maxOnTimeOverTime = 2 # seconds on over 1 min. Must be less than overTime.
-overTime = 4 # 1 min time with maxOnTimeOver.
-overTimeHysterese = maxOnTimeOverTime / 2  # Must be less than maxOnTimeOverTime
+class TriggerLimiter():
+    #minOffTime - seconds minimum not being pressed.
+    #minOnTime - seconds minimum being pressed.
+    #maxOnTime - seconds continuosly on. Must be less than maxOnTimeOverTime.
+    #maxOnTimeOverTime - seconds on over overTime. Must be less than overTime.
+    #overTime - min time with maxOnTimeOver.
+    def __init__(self, minOffTime=0.2, minOnTime=0.1, maxOnTime=2, maxOnTimeOverTime=2, 
+        overTime=4):
 
-def initOutputLimit():
-    return { 'elems': deque(), 'currTimeOnSum': 0, 'lastChangeTime': 0 }
+        self.minOffTime = minOffTime 
+        self.minOnTime = minOnTime 
+        self.maxOnTime = maxOnTime 
+        self.maxOnTimeOverTime = maxOnTimeOverTime 
+        self.overTime = overTime 
+        self.overTimeHysterese = self.maxOnTimeOverTime / 2  
 
+        self.elems = deque()
+        self.currTimeOnSum = 0
+        self.lastChangeTime = 0
 
-def limitOutput( elemList, newVal ):
-    retFlag = 0
-    onTimeSum = elemList['currTimeOnSum']
-    lastChTime = elemList['lastChangeTime']
-    t = time.perf_counter()
-    tOld = t - overTime
-    while elemList['elems']:
-        elem = elemList['elems'][0]
-        tt = elem['time']
-        if (tt >= tOld):
-            # print("End del elems, tt:", tt, "tOld:", tOld)
-            break
-        if elem['onDt']:
-            dt = elem['onDt']
-            # print("Rem seconds:", dt)
-            prevOnTimeSum = onTimeSum
-            onTimeSum -= dt
-            if (onTimeSum < maxOnTimeOverTime) and (prevOnTimeSum >= maxOnTimeOverTime):
-                onTimeSum -= overTimeHysterese
-        elemList['elems'].popleft()
-        # print("Removed elem")
+    def limitOutput(self, newVal):
+        retFlag = 0
 
-    if elemList['elems']:
-        elem = elemList['elems'][-1]
-        lastV = elem['val']
-        lastT = elem['time']
-    else:
-        lastV = 0
-        lastT = t
+        t = time.perf_counter()
+        tOld = t - self.overTime
+        while self.elems:
+            elem = self.elems[0]
+            tt = elem['time']
+            if (tt >= tOld):
+                break
+            if elem['onDt']:
+                dt = elem['onDt']
+                prevOnTimeSum = self.currTimeOnSum
+                self.currTimeOnSum -= dt
+                if (self.currTimeOnSum < self.maxOnTimeOverTime) and (prevOnTimeSum >= self.maxOnTimeOverTime):
+                    self.currTimeOnSum -= self.overTimeHysterese
+            self.elems.popleft()
 
-    if (lastV != 0):
-        if (newVal != 0):
-            if ((t - lastChTime) > maxOnTime):
-                newVal = 0  # Overriding output value
-                retFlag = 2
-                # print("On more than", maxOnTime, "seconds", "sumOnT", onTimeSum)
+        if self.elems:
+            elem = self.elems[-1]
+            lastV = elem['val']
+            lastT = elem['time']
         else:
-            if ((t - lastChTime) < minOnTime):
-                newVal = 1  # Overriding output value
-                retFlag = 1
-                # print("On less than", minOnTime, "seconds", "sumOnT", onTimeSum)
-        dt = t - lastT
-        prevOnTimeSum = onTimeSum
-        onTimeSum += dt
-        if (newVal != 0) and (onTimeSum > maxOnTimeOverTime):
-            newVal = 0
-            retFlag = 2
-            # print("Total on more than", maxOnTimeOverTime, "seconds", "sumOnT", onTimeSum)
-            if (prevOnTimeSum <= maxOnTimeOverTime):
-                onTimeSum += overTimeHysterese
-    else:
-        if (newVal != 0):
-            if ((t - lastChTime) < minOffTime):
-                newVal = 0  # Overriding output value
-                retFlag = 1
-                # print("Off less than", minOffTime, "seconds", "sumOnT", onTimeSum)
-            elif (onTimeSum + minOnTime) > maxOnTimeOverTime:
-                newVal = 0  # Overriding output value
+            lastV = 0
+            lastT = t
+
+        if (lastV != 0):
+            if (newVal != 0):
+                if ((t - self.lastChangeTime) > self.maxOnTime):
+                    newVal = 0  # Overriding output value
+                    retFlag = 2
+            else:
+                if ((t - self.lastChangeTime) < self.minOnTime):
+                    newVal = 1  # Overriding output value
+                    retFlag = 1
+            dt = t - lastT
+            prevOnTimeSum = self.currTimeOnSum
+            self.currTimeOnSum += dt
+            if (newVal != 0) and (self.currTimeOnSum > self.maxOnTimeOverTime):
+                newVal = 0
                 retFlag = 2
-                # print("Total would be on more than", maxOnTimeOverTime, "seconds", "sumOnT", onTimeSum)
-                if (onTimeSum <= maxOnTimeOverTime):
-                    onTimeSum += overTimeHysterese
-        dt = 0
+                # print("Total on more than", maxOnTimeOverTime, "seconds", "sumOnT", self.currTimeOnSum)
+                if (prevOnTimeSum <= self.maxOnTimeOverTime):
+                    self.currTimeOnSum += self.overTimeHysterese
+        else:
+            if (newVal != 0):
+                if ((t - self.lastChangeTime) < self.minOffTime):
+                    newVal = 0  # Overriding output value
+                    retFlag = 1
+                    # print("Off less than", minOffTime, "seconds", "sumOnT", self.currTimeOnSum)
+                elif (self.currTimeOnSum + self.minOnTime) > self.maxOnTimeOverTime:
+                    newVal = 0  # Overriding output value
+                    retFlag = 2
+                    # print("Total would be on more than", maxOnTimeOverTime, "seconds", "sumOnT", self.currTimeOnSum)
+                    if (self.currTimeOnSum <= self.maxOnTimeOverTime):
+                        self.currTimeOnSum += self.overTimeHysterese
+            dt = 0
+        
+        if (lastV == 0):
+            if (newVal != 0):
+                self.lastChangeTime = t
+        else:
+            if (newVal == 0):
+                self.lastChangeTime = t
 
-    elemList['currTimeOnSum'] = onTimeSum
-    
-    if (lastV == 0):
-        if (newVal != 0):
-            elemList['lastChangeTime'] = t
-    else:
-        if (newVal == 0):
-            elemList['lastChangeTime'] = t
-
-    elemList['elems'].append({ 'time': t, 'val': newVal, 'onDt': dt })
-    if (lastChTime == 0):
-        lt = 0
-    else:
-        lt = t - lastChTime
-    return newVal, lt, retFlag
+        self.elems.append({ 'time': t, 'val': newVal, 'onDt': dt })
+        if (self.lastChangeTime == 0):
+            lt = 0
+        else:
+            lt = t - self.lastChangeTime
+        return newVal, lt, retFlag

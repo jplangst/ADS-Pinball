@@ -11,7 +11,7 @@ from Visualization.Visualization import VisualizationThread
 from Visualization.EpisodeRecorderThread import EpisodeRecorderThread
 
 # TODO check reward for pushing start. Might need to tune. 
-# TODO convert limiter to class so we can have one instance per button 
+# TODO convert limiter to class so we can have one instance per button (Done, need to test)
 # TODO try without lstm and increase dense part instead 
 
 class PinballMain():
