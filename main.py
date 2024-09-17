@@ -42,15 +42,24 @@ class PinballMain():
         self.videoCap = None
 
         ### For the camera unit attached to the AGX unit ###
-        #Slice the observation frame so it only contains the play area
         self.inputFrameSize = (1080,1920)
+        #Slice the observation frame so it only contains the play area
         self.playAreaXSlice = (70, self.inputFrameSize[0]-500)
         self.playAreaYSlice = (450, self.inputFrameSize[1]-450)
+        #Slice the observation frame so it only contains the digital screen 
+        # TODO find the correct values for this slice
+        self.screenAreaXSlice = (70, self.inputFrameSize[0]-500)
+        self.screenAreaYSlice = (450, self.inputFrameSize[1]-450)
 
-        # Attempt to load the camera calibration data 
-        calibrationFile = 'CameraCalibration/calibrationData.json'
+        # Attempt to load the camera calibration data for the play area
+        calibrationFile = 'CameraCalibration/playArea_calibrationData.json'
         self.calibrationLoaded, self.calData, self.cameraMatrix, self.newCameraMatrix, \
             self.roi, self.dist = loadCameraCalibration(calibrationFile)        
+
+        # Attempt to load the camera calibration data for the digital display
+        calibrationFile = 'CameraCalibration/ocr_calibrationData.json'
+        self.ocr_calibrationLoaded, self.ocr_calData, self.ocr_cameraMatrix, self.ocr_newCameraMatrix, \
+            self.ocr_roi, self.ocr_dist = loadCameraCalibration(calibrationFile)  
 
         # Setup the GStreamer video capture
         self.pipeline = "nvarguscamerasrc sensor-id=0 sensor-mode=0 ! video/x-raw(memory:NVMM), \
@@ -118,12 +127,19 @@ class PinballMain():
 
     def processFrame(self, frame):
         if self.calibrationLoaded:
-            frame = perspectiveCorrect(frame, self.cameraMatrix, self.newCameraMatrix, self.dist, self.roi)
-        frame = self.rotate_frame(frame, -188)
-
+            playAreaFrame = perspectiveCorrect(frame, self.cameraMatrix, self.newCameraMatrix, self.dist, self.roi)
+        playAreaFrame = self.rotate_frame(playAreaFrame, -188)
         #Slice the video frame so it only contains the play area
-        frame = frame[self.playAreaXSlice[0]:self.playAreaXSlice[1], self.playAreaYSlice[0]:self.playAreaYSlice[1]]
-        return frame
+        playAreaFrame = playAreaFrame[self.playAreaXSlice[0]:self.playAreaXSlice[1], self.playAreaYSlice[0]:self.playAreaYSlice[1]]
+
+        # TODO verify slice area and rotation for the display screen
+        if self.ocr_calibrationLoaded:
+            screenFrame = perspectiveCorrect(frame, self.ocr_cameraMatrix, self.ocr_newCameraMatrix, self.ocr_dist, self.ocr_roi)
+        screenFrame = self.rotate_frame(screenFrame, -188)
+        #Slice the video frame so it only contains the play area
+        playAreaFrame = playAreaFrame[self.screenAreaXSlice[0]:self.screenAreaXSlice[1], self.screenAreaYSlice[0]:self.screenAreaYSlice[1]]
+
+        return playAreaFrame, screenFrame
 
     def initEpisode(self, frame):
         self.episode += 1
@@ -170,7 +186,7 @@ class PinballMain():
             elif camResult == 2:
                 continue 
             
-            frame = self.processFrame(frame)
+            playAreaFrame, screenFrame = self.processFrame(frame)
 
             ## TODO finish this mode
             if self.pinballMode == PinballMode.PLAYING: #Same as training but we don't perform any more training.
@@ -178,8 +194,9 @@ class PinballMain():
                 ## Perform selected decisions
 
                 ##TODO this is temp until this mode is implemented 
+                ## TODO use this mode to test camera lag. Perhaps it is due to adding a frame while the current frame is being processed. Perhaps it is better to add the frame only after the current one is fininshed processing!
                 if(not sharedData.pinballVisQueue.full()):
-                        sharedData.pinballVisQueue.put([frame, [-1,-1], sharedData.currentEpisodeReward, 0, 
+                        sharedData.pinballVisQueue.put([playAreaFrame, [-1,-1], sharedData.currentEpisodeReward, 0, 
                             str(self.episode)+ " Steps: " + str(sharedData.episodeStep) + " Training", self.episode])
                 continue
 
@@ -187,24 +204,29 @@ class PinballMain():
             elif self.pinballMode == PinballMode.RECORDING:
                 ## TODO start recording when start button first pressed, unless already recording. Can check this in the IL thread. Might as well.
 
+                #Check for game over
+                if not sharedData.gameOver and self.checkForGameOver(playAreaFrame):    
+                    sharedData.gameOver = True
+                    time.sleep(0.2)
+
                 ## Grab the current frame and add it to the IL Recording Queue
-                if(not sharedData.pinballVisQueue.full()):
-                    sharedData.ILRecordingQueue.put([frame, 0])
+                if(not sharedData.ILRecordingQueue.full()):
+                    sharedData.ILRecordingQueue.put([playAreaFrame, screenFrame])
 
             ## If we are doing reinforcement learning
             elif self.pinballMode == PinballMode.TRAINING:
                 #Just visualise the frames while the RL trains
                 if(sharedData.RLTraining):            
                     if(not sharedData.pinballVisQueue.full()):
-                        sharedData.pinballVisQueue.put([frame, [-1,-1], sharedData.currentEpisodeReward, 0, 
+                        sharedData.pinballVisQueue.put([playAreaFrame, [-1,-1], sharedData.currentEpisodeReward, 0, 
                             str(self.episode)+ " Steps: " + str(sharedData.episodeStep) + " Training", self.episode])
                     continue
 
                 #Init the episode if light conditions are good
                 if self.episodeState == 2:
-                    result, nmbBright = self.checkImageBrightness(frame, sharedData.brightnessThreshold)
+                    result, nmbBright = self.checkImageBrightness(playAreaFrame, sharedData.brightnessThreshold)
                     if self.startEpisode==self.episode or result:
-                        self.initEpisode(frame)    
+                        self.initEpisode(playAreaFrame)    
                     else:
                         #If not we clear output actions and wait for 5 minutes before checking again
                         print("Too dark to play, waiting 5 minutes. NmbBright: ", nmbBright)
@@ -213,13 +235,13 @@ class PinballMain():
                     continue
 
                 #Check for game over
-                if not sharedData.gameOver and self.checkForGameOver(frame):    
+                if not sharedData.gameOver and self.checkForGameOver(playAreaFrame):    
                     self.endEpisode()
                     time.sleep(0.2)
 
                 #Add the play area frame to the queue when the previous has been processed
                 if(not sharedData.MLFramesQueue.full()):
-                    sharedData.MLFramesQueue.put([frame, self.episode, self.episodeState, sharedData.gameOver])
+                    sharedData.MLFramesQueue.put([playAreaFrame, self.episode, self.episodeState, sharedData.gameOver])
 
             time.sleep(0.000001)
 
@@ -228,7 +250,7 @@ class PinballMain():
 
 # Attempt to load trainig progress state
 loadTrainingState = True
-pinballMode = PinballMode.TRAINING #RECORDING, PLAYING, TRAINING
+pinballMode = PinballMode.PLAYING #RECORDING, PLAYING, TRAINING
 
 pinballObject = None
 if loadTrainingState:
