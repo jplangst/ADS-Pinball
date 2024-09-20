@@ -60,6 +60,7 @@ performingOCR = False
 ### Visualisation ###
 #This queue holds the data needed for the pinball visualisation module
 pinballVisQueue = queue.Queue(1)
+piballVisProcessing = False
 currentEpisodeReward = 0
 episodeStep = 0
 currentAction = 0

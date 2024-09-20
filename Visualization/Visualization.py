@@ -120,6 +120,7 @@ class VisualizationThread(threading.Thread):
     def run(self):
         while self.processing: 
             while(not sharedData.pinballVisQueue.empty()):
+                sharedData.piballVisProcessing = True
                 visData = sharedData.pinballVisQueue.get_nowait()
 
                 frame, ballLocation, currentTotalReward, action, episodeString, episode = visData
@@ -136,13 +137,15 @@ class VisualizationThread(threading.Thread):
                 cv.imshow("Pinball AI Vis", visFrame)
 
                 #Episode recording
-                self.recordEpisode(episode, visFrame)
+                self.recordEpisode(episode, visFrame) 
+                sharedData.piballVisProcessing = False
 
                 if cv.waitKey(1) & 0xFF == ord('q'):
                     sharedData.readingVideoFrames = False
                     print("Q pressed, stopping application")
+                time.sleep(0.0001) 
 
-            time.sleep(0.000001) 
+            time.sleep(0.0001) 
         cv.destroyAllWindows()
         print("Visualization thread stopped")
         return
