@@ -10,10 +10,6 @@ import Shared.sharedData as sharedData
 from ML.BallLocator import BallLocator
 from ML.PinballController import PinballController
 
-## TODO 
-# 1. Reuse the game over detection to stop recording data
-# 2. Record the raw image frame, the ball location, the user input
-
 # The ILThread is responsible for recording frames and user inputs 
 class ILRecordingThread(threading.Thread):
     def __init__(self, target=None, name=None):
