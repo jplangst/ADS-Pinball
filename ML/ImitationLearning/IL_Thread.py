@@ -24,9 +24,20 @@ class ILRecordingThread(threading.Thread):
         self.pinballController = PinballController()
 
         # Data recording related
-        self.flushFrequency = 60 # Flush to disk every 60 frames
-        self.recordedFrames = 0
         self.episode = 0
+        # Setup the HDF5 file for recording the data
+        self.playAreaFrame_shape = (515, 970)  # 2D frame shape 
+        self.playAreaFrame_chunkSize = (self.chunkSize, self.playAreaFrame_shape[0], self.playAreaFrame_shape[1])  # Write data in chunks of 10 frames
+        self.screenFrame_shape = (510, 206)  # 2D frame shape 
+        self.screenFrame_chunkSize = (self.chunkSize, self.screenFrame_shape[0], self.screenFrame_shape[1])  # Write data in chunks of 10 frames
+        self.compression_level = 5     # Moderate GZIP compression
+
+        # Pre allocate the chunks for recording the data
+        self.playAreaDataChunk = np.zeros((self.chunkSize, *self.playAreaFrame_shape))
+        self.screenDataChunk = np.zeros((self.chunkSize, *self.screenFrame_shape))
+        self.userInputsDataChunk = np.zeros((self.chunkSize,))
+        self.ballLocationDataChunk = np.zeros((self.chunkSize,2))
+
         # data chunks thich will be used for recording the data
         self.playAreaDataChunk = None
         self.screenDataChunk = None
@@ -55,57 +66,45 @@ class ILRecordingThread(threading.Thread):
     def run(self):
         sharedData.recordingIL = True  
 
-        # Setup the HDF5 file for recording the data
-        playAreaFrame_shape = (510, 1020)  # 2D frame shape
-        playAreaFrame_chunkSize = (self.chunkSize, playAreaFrame_shape[0], playAreaFrame_shape[1])  # Write data in chunks of 10 frames
-        screenFrame_shape = (512, 512)  # 2D frame shape #TODO get the correct shape for this frame
-        screenFrame_chunkSize = (self.chunkSize, screenFrame_shape[0], screenFrame_shape[1])  # Write data in chunks of 10 frames
-        compression_level = 5     # Moderate GZIP compression
-
-        # Pre allocate the chunks for recording the data
-        self.playAreaDataChunk = np.zeros((self.chunkSize, *playAreaFrame_shape))
-        self.screenDataChunk = np.zeros((self.chunkSize, *screenFrame_shape))
-        self.userInputsDataChunk = np.zeros((self.chunkSize,))
-        self.ballLocationDataChunk = np.zeros((self.chunkSize,2))
-
-        # Contineusly record data until stopped
-        self.recording = True 
-        while sharedData.recordingIL:
-              
+        # Continously record data until stopped
+        while sharedData.recordingIL:          
             buttonPressState = self.pinballController.readInputPins()
 
             # Check if we should start recording 
             if not self.recording and sharedData.gameOver and buttonPressState==4:
                 self.recording = True
+                sharedData.gameOver = False
+            else: #Otherwise wait until start has been pressed
+                time.sleep(0.000001)
+                continue
             
             # Save one file per game
-            uuid = uuid.uuid4() #Creat a unique identifier for the file
+            uuid = uuid.uuid4() #Create a unique identifier for the file
             filename = "episode_"+self.episode+"_data_"+uuid+".h5"
             try:
                 self.hf = h5py.File(filename, "a")  # 'a' mode means append if the file exists, or create a new one
                 # Access existing datasets or create new ones if needed
                 if "playArea_frame" not in self.hf:
-                    self.hf.create_dataset("playArea_frame", shape=(0, *playAreaFrame_shape), maxshape=(None, *playAreaFrame_shape), dtype='float64',
-                                        compression="gzip", compression_opts=compression_level, chunks=playAreaFrame_chunkSize)
+                    self.hf.create_dataset("playArea_frame", shape=(0, *self.playAreaFrame_shape), maxshape=(None, *self.playAreaFrame_shape), dtype='float64',
+                                        compression="gzip", compression_opts=self.compression_level, chunks=self.playAreaFrame_chunkSize)
                 if "screen_frame" not in self.hf:
-                    self.hf.create_dataset("playArea_frame", shape=(0, *screenFrame_shape), maxshape=(None, *screenFrame_shape), dtype='float64',
-                                        compression="gzip", compression_opts=compression_level, chunks=screenFrame_chunkSize)
+                    self.hf.create_dataset("playArea_frame", shape=(0, *self.screenFrame_shape), maxshape=(None, *self.screenFrame_shape), dtype='float64',
+                                        compression="gzip", compression_opts=self.compression_level, chunks=self.screenFrame_chunkSize)
                 if "ball_location" not in self.hf:
                     self.hf.create_dataset("ball_location", shape=(0,2), maxshape=(None,2), dtype='int32',
-                                        compression="gzip", compression_opts=compression_level, chunks=(10,))
+                                        compression="gzip", compression_opts=self.compression_level, chunks=(10,))
                 if "user_inputs" not in self.hf:
                     self.hf.create_dataset("user_inputs", shape=(0,), maxshape=(None,), dtype='int32',
-                                        compression="gzip", compression_opts=compression_level, chunks=(10,2))
+                                        compression="gzip", compression_opts=self.compression_level, chunks=(10,2))
 
                 while self.recording:
                     ## This will stop the recording of data when a full game has been played, e.g. all balls have been lost
-                    if sharedData.gameOver: ### TODO start recording again when start button pressed
+                    if sharedData.gameOver: 
                         self.recording = False
                         self.episode += 1
 
                     ## Check for button presses
                     buttonsPressedState = self.pinballController.readInputPins()
-                    ballLocation = [-1,-1]
                     episode_reward = 0
                     episode_string = "RECORDING DATA"
 
@@ -124,7 +123,7 @@ class ILRecordingThread(threading.Thread):
 
                         ### Record the data to file
                         self.recordData(playAreaFrame, screenFrame, ballLocation, buttonsPressedState)
-
+                        
                     time.sleep(0.000001)
             finally:
                 # Ensure the HDF5 file is closed properly, even if an error occurs
@@ -190,9 +189,5 @@ class ILRecordingThread(threading.Thread):
             ballLocation_dataset[current_ballLocation_size:] = self.ballLocationDataChunk
 
             # Flush to save to disk
-            #self.recordedFrames = self.recordedFrames + 1
-            #if self.recordedFrames > self.flushFrequency:
-            self.recordedFrames = self.recordedFrames - self.flushFrequency
             self.hf.flush()
-
             self.currentChunkIndex = 0

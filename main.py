@@ -48,7 +48,7 @@ class PinballMain():
         self.playAreaYSlice = (500, self.inputFrameSize[1]-450)
         #Slice the observation frame so it only contains the digital screen 
         self.screenAreaXSlice = (50, self.inputFrameSize[0]-520)
-        self.screenAreaYSlice = (100, self.inputFrameSize[1]-1615)
+        self.screenAreaYSlice = (100, self.inputFrameSize[1]-1614)
 
         # Attempt to load the camera calibration data for the play area
         calibrationFile = 'CameraCalibration/playArea_calibrationData.json'
@@ -70,23 +70,23 @@ class PinballMain():
     def start_threads(self): 
         if self.pinballMode == PinballMode.TRAINING or self.pinballMode == PinballMode.PLAYING:     
             self.mlThread.start()   
+            self.recordEpisodeThread.start()
         if self.pinballMode == PinballMode.RECORDING:
             self.ilRecordingThread.start()
         self.visThread.start()
-        self.recordEpisodeThread.start()
         #self.ocrThread.start()
 
     def stop_threads(self):
         if self.pinballMode == PinballMode.TRAINING or self.pinballMode == PinballMode.PLAYING: 
             self.mlThread.stopProcessing()
             self.mlThread.join()
+            self.recordEpisodeThread.stopProcessing()
+            self.recordEpisodeThread.join()
         if self.pinballMode == PinballMode.RECORDING:
             self.ilRecordingThread.stopRecording()
             self.ilRecordingThread.join()
         self.visThread.stopProcessing()
         self.visThread.join()
-        self.recordEpisodeThread.stopProcessing()
-        self.recordEpisodeThread.join()
         #self.ocrThread.stopProcessing()
         #self.ocrThread.join()
 
