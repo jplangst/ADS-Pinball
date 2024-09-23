@@ -122,6 +122,8 @@ class ILRecordingThread(threading.Thread):
                         
                     time.sleep(0.000001)
             finally:
+                # Flush any remaining data
+                self.hf.flush()
                 # Ensure the HDF5 file is closed properly, even if an error occurs
                 self.hf.close()
         print("IL recording thread stopped")
