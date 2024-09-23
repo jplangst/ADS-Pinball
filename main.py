@@ -131,7 +131,6 @@ class PinballMain():
         #Slice the video frame so it only contains the play area
         playAreaFrame = playAreaFrame[self.playAreaXSlice[0]:self.playAreaXSlice[1], self.playAreaYSlice[0]:self.playAreaYSlice[1]]
 
-        # TODO verify slice area and rotation for the display screen
         if self.ocr_calibrationLoaded:
             screenFrame = perspectiveCorrect(frame, self.ocr_cameraMatrix, self.ocr_newCameraMatrix, self.ocr_dist, self.ocr_roi)
         screenFrame = self.rotate_frame(screenFrame, -181)

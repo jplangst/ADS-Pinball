@@ -27,6 +27,13 @@ class ILRecordingThread(threading.Thread):
         self.flushFrequency = 60 # Flush to disk every 60 frames
         self.recordedFrames = 0
         self.episode = 0
+        # data chunks thich will be used for recording the data
+        self.playAreaDataChunk = None
+        self.screenDataChunk = None
+        self.userInputsDataChunk = None
+        self.ballLocationDataChunk = None
+        self.currentChunkIndex = 0
+        self.chunkSize = 10
 
         # CNN related 
         self.locatedConsecutiveFrames = 0
@@ -50,10 +57,16 @@ class ILRecordingThread(threading.Thread):
 
         # Setup the HDF5 file for recording the data
         playAreaFrame_shape = (510, 1020)  # 2D frame shape
-        playAreaFrame_chunkSize = (10, playAreaFrame_shape[0], playAreaFrame_shape[1])  # Write data in chunks of 10 frames
+        playAreaFrame_chunkSize = (self.chunkSize, playAreaFrame_shape[0], playAreaFrame_shape[1])  # Write data in chunks of 10 frames
         screenFrame_shape = (512, 512)  # 2D frame shape #TODO get the correct shape for this frame
-        screenFrame_chunkSize = (10, screenFrame_shape[0], screenFrame_shape[1])  # Write data in chunks of 10 frames
+        screenFrame_chunkSize = (self.chunkSize, screenFrame_shape[0], screenFrame_shape[1])  # Write data in chunks of 10 frames
         compression_level = 5     # Moderate GZIP compression
+
+        # Pre allocate the chunks for recording the data
+        self.playAreaDataChunk = np.zeros((self.chunkSize, *playAreaFrame_shape))
+        self.screenDataChunk = np.zeros((self.chunkSize, *screenFrame_shape))
+        self.userInputsDataChunk = np.zeros((self.chunkSize,))
+        self.ballLocationDataChunk = np.zeros((self.chunkSize,2))
 
         # Contineusly record data until stopped
         self.recording = True 
@@ -144,31 +157,42 @@ class ILRecordingThread(threading.Thread):
             return ballDetected, ballLocation
     
     def recordData(self, playAreaFrame, screenFrame, ballLocation, buttonsPressedState):
-        playArea_dataset = self.hf["playArea_frame"]
-        screen_dataset = self.hf["screen_frame"]
-        userInputs_dataset = self.hf["user_inputs"]
-        ballLocation_dataset = self.hf["ball_location"]
-        
-        # Resize datasets to accommodate new data
-        current_playArea_size = playArea_dataset.shape[0]
-        current_screen_size = screen_dataset.shape[0]
-        current_userInputs_size = userInputs_dataset.shape[0]
-        current_ballLocation_size = ballLocation_dataset.shape[0]
+        ### Add data to the chunk
+        self.playAreaDataChunk[self.currentChunkIndex] = playAreaFrame
+        self.screenDataChunk[self.currentChunkIndex] = screenFrame
+        self.userInputsDataChunk[self.currentChunkIndex] = buttonsPressedState
+        self.ballLocationDataChunk[self.currentChunkIndex] = ballLocation
+        self.currentChunkIndex += 1
 
-        # Record the data
-        playArea_dataset.resize(current_playArea_size + playAreaFrame.shape[0], axis=0)
-        screen_dataset.resize(current_screen_size + playAreaFrame.shape[0], axis=0)
-        userInputs_dataset.resize(current_userInputs_size + len(buttonsPressedState), axis=0)
-        ballLocation_dataset.resize(current_ballLocation_size + ballLocation.shape[0], axis=0)
+        ### When the chunk is full, write it to the file and reset counter
+        if self.currentChunkIndex >= self.chunkSize:
+            playArea_dataset = self.hf["playArea_frame"]
+            screen_dataset = self.hf["screen_frame"]
+            userInputs_dataset = self.hf["user_inputs"]
+            ballLocation_dataset = self.hf["ball_location"]
+            
+            # Resize datasets to accommodate new data
+            current_playArea_size = playArea_dataset.shape[0]
+            current_screen_size = screen_dataset.shape[0]
+            current_userInputs_size = userInputs_dataset.shape[0]
+            current_ballLocation_size = ballLocation_dataset.shape[0]
 
-        # Append new data
-        playArea_dataset[current_playArea_size:] = playAreaFrame
-        screen_dataset[current_screen_size:] = screenFrame
-        userInputs_dataset[current_userInputs_size:] = buttonsPressedState
-        ballLocation_dataset[current_ballLocation_size:] = ballLocation
+            # Record the data
+            playArea_dataset.resize(current_playArea_size + self.playAreaDataChunk.shape[0], axis=0)
+            screen_dataset.resize(current_screen_size + self.screenDataChunk.shape[0], axis=0)
+            userInputs_dataset.resize(current_userInputs_size + self.userInputsDataChunk.shape[0], axis=0)
+            ballLocation_dataset.resize(current_ballLocation_size + self.ballLocationDataChunk.shape[0], axis=0)
 
-        # Flush to save to disk
-        self.recordedFrames = self.recordedFrames + 1
-        if self.recordedFrames > self.flushFrequency:
+            # Append new data
+            playArea_dataset[current_playArea_size:] = self.playAreaDataChunk
+            screen_dataset[current_screen_size:] = self.screenDataChunk
+            userInputs_dataset[current_userInputs_size:] = self.userInputsDataChunk
+            ballLocation_dataset[current_ballLocation_size:] = self.ballLocationDataChunk
+
+            # Flush to save to disk
+            #self.recordedFrames = self.recordedFrames + 1
+            #if self.recordedFrames > self.flushFrequency:
             self.recordedFrames = self.recordedFrames - self.flushFrequency
             self.hf.flush()
+
+            self.currentChunkIndex = 0
